@@ -126,7 +126,7 @@ STRICT RULES:
       await audioContextRef.current.resume();
       await outputAudioContextRef.current.resume();
 
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_API_KEY});
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
       const sourceNode = audioContextRef.current.createMediaStreamSource(stream);
@@ -224,7 +224,7 @@ STRICT RULES:
 
     try {
       if (isOnline) {
-        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+        const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_API_KEY});
         const sourceLang = mode === TranslationMode.EN_TO_RU ? 'English' : 'Russian';
         const targetLang = mode === TranslationMode.EN_TO_RU ? 'Russian' : 'English';
         
