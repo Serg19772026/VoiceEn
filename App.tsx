@@ -137,7 +137,7 @@ STRICT RULES:
       updateVolume();
 
       const sessionPromise = ai.live.connect({
-        model: 'gemini-2.0-flash-exp',
+        model: 'gemini-1.5-flash',
         config: {
           responseModalities: [Modality.AUDIO],
           speechConfig: {
