@@ -137,7 +137,7 @@ STRICT RULES:
       updateVolume();
 
       const sessionPromise = ai.live.connect({
-        model: 'gemini-1.5-flash',
+        model: 'gemini-2.5-flash-native-audio-preview-09-2025',
         config: {
           responseModalities: [Modality.AUDIO],
           speechConfig: {
@@ -229,7 +229,7 @@ STRICT RULES:
         const targetLang = mode === TranslationMode.EN_TO_RU ? 'Russian' : 'English';
         
         const result = await ai.models.generateContent({
-          model: 'gemini-1.5-flash',
+          model: 'gemini-3-flash-preview',
           contents: `Translate this text from ${sourceLang} to ${targetLang}. 
           STRICT RULE: Output ONLY the translated text. Do NOT echo or repeat the source text.
           INPUT: "${text}"`,
