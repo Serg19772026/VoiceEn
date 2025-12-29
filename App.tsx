@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { GoogleGenAI, Modality, LiveServerMessage } from '@google/genai';
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import { 
   Mic, Languages, MessageSquare, Volume2, 
   Keyboard, Send, Wifi, WifiOff, X, Settings, Trash2, AlertCircle, Lock, Unlock, Square, ArrowLeftRight
@@ -214,7 +215,7 @@ STRICT RULES:
     });
   };
 
-  const handleTextTranslate = async () => {
+   const handleTextTranslate = async () => {
     if (!inputText.trim()) return;
     const text = inputText;
     setInputText('');
@@ -222,25 +223,51 @@ STRICT RULES:
     addMessage('user', text, true);
     setIsTranslatingText(true);
 
+    const sourceLang = mode === TranslationMode.EN_TO_RU ? 'English' : 'Russian';
+    const targetLang = mode === TranslationMode.EN_TO_RU ? 'Russian' : 'English';
+
     try {
-      if (isOnline) {
-        const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_API_KEY});
-        const sourceLang = mode === TranslationMode.EN_TO_RU ? 'English' : 'Russian';
-        const targetLang = mode === TranslationMode.EN_TO_RU ? 'Russian' : 'English';
-        
-        const result = await ai.models.generateContent({
-          model: 'gemini-3-flash-preview',
-          contents: `Translate this text from ${sourceLang} to ${targetLang}. 
-          STRICT RULE: Output ONLY the translated text. Do NOT echo or repeat the source text.
-          INPUT: "${text}"`,
-        });
-        
-        const translation = result.text?.trim() || "Error";
-        addMessage('model', translation, true);
-        speakText(translation, mode === TranslationMode.EN_TO_RU ? 'ru-RU' : 'en-US');
+      // 1. ПОИСК ЛОКАЛЬНОГО ИИ (Расширенная проверка)
+      const aiObj = (window as any).ai;
+      // В новых версиях Chrome локальный ИИ может быть в window.ai.languageModel или window.model
+      const localModel = aiObj?.languageModel || aiObj?.assistant || (window as any).model;
+      
+      console.log("Диагностика ИИ:", { aiObj, localModel });
+
+      if (localModel) {
+        const capabilities = await localModel.capabilities();
+        if (capabilities.available !== 'no') {
+          console.log("Использую локальный ИИ...");
+          const session = await localModel.create({
+            systemPrompt: `You are a translator. Translate from ${sourceLang} to ${targetLang}. ONLY output the translation.`
+          });
+          const translation = await session.prompt(text);
+          session.destroy();
+          addMessage('model', translation.trim(), true);
+          speakText(translation, mode === TranslationMode.EN_TO_RU ? 'ru-RU' : 'en-US');
+          setIsTranslatingText(false);
+          return; 
+        }
       }
+
+      // 2. ОБЛАЧНЫЙ FALLBACK (Исправление ошибки 404)
+      console.log("Локальный ИИ не найден, пробую облако Gemini...");
+      const genAI = new GoogleGenerativeAI(import.meta.env.VITE_API_KEY);
+      
+      // Используем gemini-pro - она самая стабильная и редко выдает 404
+      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+      
+      const result = await model.generateContent({
+        contents: [{ role: 'user', parts: [{ text: `Translate this to ${targetLang}: ${text}. Output only translation.` }] }]
+      });
+
+      const translation = result.response.text().trim() || "Error";
+      addMessage('model', translation, true);
+      speakText(translation, mode === TranslationMode.EN_TO_RU ? 'ru-RU' : 'en-US');
+
     } catch (err) {
-      addMessage('model', "Connection error.");
+      console.error("Критическая ошибка:", err);
+      addMessage('model', "Error. Check VPN or restart Chrome.");
     } finally {
       setIsTranslatingText(false);
     }
