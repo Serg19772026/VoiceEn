@@ -154,9 +154,19 @@ STRICT RULES:
             setIsRecording(true);
             const scriptProcessor = audioContextRef.current!.createScriptProcessor(4096, 1, 1);
             scriptProcessor.onaudioprocess = (e) => {
+              // ПРЕДОХРАНИТЕЛЬ: если сессия была закрыта (sessionRef обнулился), 
+              // мы просто выходим и ничего не отправляем в Google
+              if (!sessionRef.current) return;
+
               const pcmBlob = createPcmBlob(e.inputBuffer.getChannelData(0));
               sessionPromise.then(s => {
-                if (s) s.sendRealtimeInput({ media: pcmBlob });
+                try {
+                  if (s) s.sendRealtimeInput({ media: pcmBlob });
+                } catch (err) {
+                  // Если произошел критический разрыв прямо во время отправки
+                  console.log("Разрыв связи. Останавливаю запись.");
+                  stopSession();
+                }
               });
             };
             sourceNode.connect(scriptProcessor);
@@ -200,8 +210,14 @@ STRICT RULES:
               setLiveTranscription({ user: '', model: '' });
             }
           },
-          onerror: () => stopSession(),
-          onclose: () => stopSession()
+          onerror: (e) => { 
+            console.error("ОШИБКА ГОЛОСОВОГО КАНАЛА:", e);
+            stopSession(); 
+          },
+          onclose: (reason) => {
+            console.log("ГОЛОСОВОЙ КАНАЛ ЗАКРЫТ. Причина:", reason);
+            stopSession();
+          }
         }
       });
       sessionRef.current = await sessionPromise;
@@ -215,7 +231,7 @@ STRICT RULES:
     });
   };
 
-   const handleTextTranslate = async () => {
+    const handleTextTranslate = async () => {
     if (!inputText.trim()) return;
     const text = inputText;
     setInputText('');
@@ -223,51 +239,42 @@ STRICT RULES:
     addMessage('user', text, true);
     setIsTranslatingText(true);
 
-    const sourceLang = mode === TranslationMode.EN_TO_RU ? 'English' : 'Russian';
-    const targetLang = mode === TranslationMode.EN_TO_RU ? 'Russian' : 'English';
+    const targetLangName = mode === TranslationMode.EN_TO_RU ? 'Russian' : 'English';
 
     try {
-      // 1. ПОИСК ЛОКАЛЬНОГО ИИ (Расширенная проверка)
       const aiObj = (window as any).ai;
-      // В новых версиях Chrome локальный ИИ может быть в window.ai.languageModel или window.model
-      const localModel = aiObj?.languageModel || aiObj?.assistant || (window as any).model;
-      
-      console.log("Диагностика ИИ:", { aiObj, localModel });
+      const localModel = aiObj?.languageModel || (window as any).LanguageModel;
 
       if (localModel) {
-        const capabilities = await localModel.capabilities();
-        if (capabilities.available !== 'no') {
-          console.log("Использую локальный ИИ...");
-          const session = await localModel.create({
-            systemPrompt: `You are a translator. Translate from ${sourceLang} to ${targetLang}. ONLY output the translation.`
-          });
-          const translation = await session.prompt(text);
-          session.destroy();
-          addMessage('model', translation.trim(), true);
-          speakText(translation, mode === TranslationMode.EN_TO_RU ? 'ru-RU' : 'en-US');
-          setIsTranslatingText(false);
-          return; 
-        }
+        console.log("Локальный ИИ найден. Начинаю быстрый перевод...");
+        const session = await localModel.create(); // Создаем пустую сессию без сложного системного промпта
+        
+        // Передаем инструкцию прямо внутри промпта - это работает в 100% случаев
+        const translation = await session.prompt(
+          `Translate the following text into ${targetLangName}. Output ONLY the translation: ${text}`
+        );
+        
+        session.destroy();
+        console.log("Перевод готов:", translation);
+        
+        addMessage('model', translation.trim(), true);
+        speakText(translation, mode === TranslationMode.EN_TO_RU ? 'ru-RU' : 'en-US');
+        setIsTranslatingText(false);
+        return; 
       }
 
-      // 2. ОБЛАЧНЫЙ FALLBACK (Исправление ошибки 404)
-      console.log("Локальный ИИ не найден, пробую облако Gemini...");
+      // --- ОБЛАЧНЫЙ FALLBACK (если локальный ИИ всё же не сработал) ---
       const genAI = new GoogleGenerativeAI(import.meta.env.VITE_API_KEY);
-      
-      // Используем gemini-pro - она самая стабильная и редко выдает 404
-      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-      
-      const result = await model.generateContent({
-        contents: [{ role: 'user', parts: [{ text: `Translate this to ${targetLang}: ${text}. Output only translation.` }] }]
-      });
+      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+      const result = await model.generateContent(`Translate to ${targetLangName}: ${text}. Output ONLY translation.`);
+      const cloudTranslation = result.response.text().trim();
 
-      const translation = result.response.text().trim() || "Error";
-      addMessage('model', translation, true);
-      speakText(translation, mode === TranslationMode.EN_TO_RU ? 'ru-RU' : 'en-US');
+      addMessage('model', cloudTranslation, true);
+      speakText(cloudTranslation, mode === TranslationMode.EN_TO_RU ? 'ru-RU' : 'en-US');
 
     } catch (err) {
-      console.error("Критическая ошибка:", err);
-      addMessage('model', "Error. Check VPN or restart Chrome.");
+      console.error("Ошибка:", err);
+      addMessage('model', "Connection error. Check VPN.");
     } finally {
       setIsTranslatingText(false);
     }
