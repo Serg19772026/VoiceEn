@@ -273,7 +273,7 @@ STRICT RULES:
 
       // --- ОБЛАЧНЫЙ FALLBACK (если локальный ИИ всё же не сработал) ---
       const genAI = new GoogleGenerativeAI(import.meta.env.VITE_API_KEY);
-      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
       const result = await model.generateContent(`Translate to ${targetLangName}: ${text}. Output ONLY translation.`);
       const cloudTranslation = result.response.text().trim();
 
