@@ -153,22 +153,30 @@ STRICT RULES:
             setStatus('Live');
             setIsRecording(true);
             const scriptProcessor = audioContextRef.current!.createScriptProcessor(4096, 1, 1);
+            
             scriptProcessor.onaudioprocess = (e) => {
-              // ПРЕДОХРАНИТЕЛЬ: если сессия была закрыта (sessionRef обнулился), 
-              // мы просто выходим и ничего не отправляем в Google
-              if (!sessionRef.current) return;
+              // ПРЕДОХРАНИТЕЛЬ №1: Если мы вручную выключили запись или сессии больше нет
+              if (!sessionRef.current) {
+                sourceNode.disconnect(scriptProcessor);
+                scriptProcessor.disconnect();
+                return;
+              }
 
               const pcmBlob = createPcmBlob(e.inputBuffer.getChannelData(0));
+              
               sessionPromise.then(s => {
-                try {
-                  if (s) s.sendRealtimeInput({ media: pcmBlob });
-                } catch (err) {
-                  // Если произошел критический разрыв прямо во время отправки
-                  console.log("Разрыв связи. Останавливаю запись.");
-                  stopSession();
+                // ПРЕДОХРАНИТЕЛЬ №2: Проверяем, не закрылась ли сессия за ту миллисекунду, пока мы готовили звук
+                if (s && sessionRef.current) {
+                  try {
+                    s.sendRealtimeInput({ media: pcmBlob });
+                  } catch (err) {
+                    // Если поймали ошибку отправки - тихо выключаемся без спама
+                    stopSession();
+                  }
                 }
               });
             };
+            
             sourceNode.connect(scriptProcessor);
             scriptProcessor.connect(audioContextRef.current!.destination);
           },
