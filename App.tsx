@@ -239,7 +239,7 @@ STRICT RULES:
     });
   };
 
-    const handleTextTranslate = async () => {
+     const handleTextTranslate = async () => {
     if (!inputText.trim()) return;
     const text = inputText;
     setInputText('');
@@ -254,30 +254,29 @@ STRICT RULES:
       const localModel = aiObj?.languageModel || (window as any).LanguageModel;
 
       if (localModel) {
-        console.log("Локальный ИИ найден. Начинаю быстрый перевод...");
-        const session = await localModel.create(); // Создаем пустую сессию без сложного системного промпта
-        
-        // Передаем инструкцию прямо внутри промпта - это работает в 100% случаев
+        const session = await localModel.create();
         const translation = await session.prompt(
           `Translate the following text into ${targetLangName}. Output ONLY the translation: ${text}`
         );
-        
         session.destroy();
-        console.log("Перевод готов:", translation);
         
-        addMessage('model', translation.trim(), true);
-        speakText(translation, mode === TranslationMode.EN_TO_RU ? 'ru-RU' : 'en-US');
+        const cleanTranslation = translation.trim();
+        // Добавляем пометку (ПК) для сообщения в чате
+        addMessage('model', `${cleanTranslation}  !`, true);
+        // Озвучиваем только чистый текст
+        speakText(cleanTranslation, mode === TranslationMode.EN_TO_RU ? 'ru-RU' : 'en-US');
         setIsTranslatingText(false);
         return; 
       }
 
-      // --- ОБЛАЧНЫЙ FALLBACK (если локальный ИИ всё же не сработал) ---
+      // --- ОБЛАЧНЫЙ FALLBACK ---
       const genAI = new GoogleGenerativeAI(import.meta.env.VITE_API_KEY);
       const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
       const result = await model.generateContent(`Translate to ${targetLangName}: ${text}. Output ONLY translation.`);
+      
       const cloudTranslation = result.response.text().trim();
-
-      addMessage('model', cloudTranslation, true);
+      // Добавляем пометку (Cloud) для облачного перевода
+      addMessage('model', `${cloudTranslation} ^`, true);
       speakText(cloudTranslation, mode === TranslationMode.EN_TO_RU ? 'ru-RU' : 'en-US');
 
     } catch (err) {
